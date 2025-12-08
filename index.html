@@ -691,7 +691,7 @@
         showTimeoutCountdownIfAny();
         if (!isSessionStillActive()) {
           showTimeoutNotice("Session expired for security. Please login again.");
-          setTimeout(()=>manualLogoutDueToTimeout(), 1100);
+          setTimeout(()=>manualLogoutDueToTimeout(), 1000);
         }
       }
       timeoutCountdownInterval = setInterval(check, 800);
@@ -715,10 +715,7 @@
     addSessionAutoLogoutHandlers();
 
     /****************************************************************
-     * PWA MANIFEST & SHARE TARGET (FIXED FOR ANDROID INSTALL)
-     * - Removed file_handlers (caused shortcut fallback)
-     * - Refined share_target accept types
-     * - Added maskable icons
+     * PWA MANIFEST (FILE HANDLERS + SHARE TARGET)
      ****************************************************************/
     (function createManifestAndServiceWorker() {
       const imgIcon = "https://github.com/ashardiyan/test/blob/main/Al%20Rahman%20Electronics-02.png?raw=true";
@@ -735,7 +732,7 @@
           { src: imgIcon, sizes: "192x192", type: "image/png", purpose: "any maskable" },
           { src: imgIcon, sizes: "512x512", type: "image/png", purpose: "any maskable" }
         ],
-        // SHARE TARGET: Allows sharing text/files FROM WhatsApp TO this app
+        // 1. SHARE TARGET (WhatsApp "Share")
         share_target: {
           action: "./index.html",
           method: "POST",
@@ -744,12 +741,22 @@
             files: [
               {
                 name: "backupFile",
-                // Valid MIME types for Android WebAPK generation + JSON
-                accept: ["application/json", "text/plain", ".json"]
+                accept: ["application/json", ".json", "text/plain"]
               }
             ]
           }
-        }
+        },
+        // 2. FILE HANDLERS (File Manager "Open With")
+        file_handlers: [
+          {
+            action: "./index.html",
+            accept: {
+              "application/json": [".json"],
+              "text/json": [".json"],
+              "text/plain": [".json"]
+            }
+          }
+        ]
       };
       
       const manifestBlob = new Blob([JSON.stringify(manifestObj)], { type: 'application/manifest+json' });
@@ -765,7 +772,7 @@
       })();
 
       const swScript = `
-        const CACHE_NAME = 'local-dealer-cache-v4';
+        const CACHE_NAME = 'local-dealer-cache-v5';
         const OFFLINE_URL = self.registration.scope.endsWith('/') ? self.registration.scope + 'index.html' : self.registration.scope + '/index.html';
         const FILES_TO_CACHE = [ OFFLINE_URL, './index.html' ];
 
@@ -782,7 +789,6 @@
         });
         self.addEventListener('fetch', function(event) {
           // --- SHARE TARGET INTERCEPTOR ---
-          // Captures file shared from WhatsApp
           if (event.request.method === 'POST' && event.request.url.endsWith('index.html')) {
              event.respondWith((async () => {
                const formData = await event.request.formData();
@@ -992,7 +998,7 @@
     let justSetPIN = false;
 
     window.addEventListener('load', async () => {
-      // 1. Check shared file from SW cache
+      // 1. Check shared file from SW cache (Share Target)
       const urlParams = new URLSearchParams(window.location.search);
       if (urlParams.has('share_processing')) {
          try {
@@ -1005,6 +1011,18 @@
                  window.history.replaceState({}, document.title, window.location.pathname);
              }
          } catch(e) { console.error("Share error", e); }
+      }
+
+      // 2. Check File Handling API (Open With)
+      if ('launchQueue' in window && 'files' in launchQueue) {
+        launchQueue.setConsumer(async (launchParams) => {
+          if (!launchParams.files.length) return;
+          const fileHandle = launchParams.files[0];
+          const file = await fileHandle.getFile();
+          const text = await file.text();
+          window.pendingShareData = text; // Store it for after login
+          // If user is already logged in, process immediately? No, wait for unlock.
+        });
       }
 
       updatePINUI(getHasPIN());
