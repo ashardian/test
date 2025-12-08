@@ -806,7 +806,7 @@
           { src: imgIcon, sizes: "192x192", type: "image/png" },
           { src: imgIcon, sizes: "512x512", type: "image/png" }
         ],
-        // --- ADDED SHARE TARGET ---
+        // --- ADDED SHARE TARGET (FIXED with broad ACCEPT) ---
         share_target: {
           action: "./index.html",
           method: "POST",
@@ -815,11 +815,23 @@
             files: [
               {
                 name: "backupFile",
-                accept: ["application/json", ".json", "text/json"]
+                // Accepting * allows WhatsApp to see this app even if it sends weird types
+                accept: ["application/json", ".json", "text/json", "text/plain", "application/octet-stream", "*/*"]
               }
             ]
           }
-        }
+        },
+        // --- ADDED FILE HANDLERS (Open With...) ---
+        file_handlers: [
+          {
+            action: "./index.html",
+            accept: {
+              "application/json": [".json"],
+              "text/json": [".json"],
+              "text/plain": [".json"]
+            }
+          }
+        ]
       };
       const manifestBlob = new Blob([JSON.stringify(manifestObj)], { type: 'application/json' });
       const manifestURL = URL.createObjectURL(manifestBlob);
