@@ -563,7 +563,6 @@
             return;
         }
 
-        // We use the current PIN hash as part of the user ID for simplicity in this local-only app
         const userId = window.localStorage.getItem('dealer-hash') || 'default-user';
         
         try {
@@ -571,7 +570,7 @@
                 challenge: randomBuffer(32),
                 rp: { 
                     name: "Al Rahman Electronics", 
-                    id: window.location.hostname // Required for WebAuthn
+                    id: window.location.hostname 
                 },
                 user: {
                     id: strToBuffer(userId),
@@ -580,7 +579,7 @@
                 },
                 pubKeyCredParams: [{ alg: -7, type: "public-key" }, { alg: -257, type: "public-key" }],
                 authenticatorSelection: {
-                    authenticatorAttachment: "platform", // <--- CRITICAL: Forces on-device fingerprint/faceid
+                    authenticatorAttachment: "platform", // Forces device sensor
                     userVerification: "required",
                     residentKey: "preferred"
                 },
@@ -592,14 +591,10 @@
                 publicKey: publicKeyCredentialCreationOptions
             });
 
-            // Store the credential ID to verify against later
-            // Note: In a real server-app, you'd send this to the backend. 
-            // Here we store it locally to "remember" the user has set it up.
             const credId = btoa(String.fromCharCode(...new Uint8Array(credential.rawId)));
             localStorage.setItem('dealer-bio-cred-id', credId);
             
             alert("Fingerprint setup successful! You can now use it to unlock.");
-            // Update Login UI immediately if we are there (unlikely, but safe)
             checkBiometricButtonVisibility();
 
         } catch (err) {
@@ -637,7 +632,6 @@
             if (assertion) {
                 // Success! Unlock the app.
                 showDealerApp();
-                // Also set the session to active
                 const keepLoggedInToggle = document.getElementById('keepLoggedInToggle');
                 if (keepLoggedInToggle.checked) {
                      setKeepSessionActive(Date.now() + KEEP_LOGGED_TIMEOUT_MS);
@@ -1067,7 +1061,11 @@
         document.getElementById('login-error').style.color = '';
       }
       document.getElementById('loginPIN').value = '';
-      setTimeout(()=>document.getElementById('loginPIN').focus(),120);
+      
+      // FIXED: Only focus PIN (showing keyboard) if fingerprint is NOT setup
+      if (!hasBiometricSetup()) {
+          setTimeout(()=>document.getElementById('loginPIN').focus(),120);
+      }
       
       // Check if we should show fingerprint button
       checkBiometricButtonVisibility();
@@ -1079,6 +1077,12 @@
       updatePINUI(getHasPIN());
       if (!checkQuickAutoUnlock()) {
         showLoginModal();
+        
+        // FIXED: Automatically trigger fingerprint scan on load
+        if (hasBiometricSetup()) {
+             // Slight delay to ensure modal is rendered
+             setTimeout(authenticateBiometric, 400); 
+        }
       }
       setTimeout(function() {
         if ("serviceWorker" in navigator && window.matchMedia('(display-mode: standalone)').matches) {
