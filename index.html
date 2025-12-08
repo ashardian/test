@@ -789,7 +789,8 @@
     addSessionAutoLogoutHandlers();
 
     /****************************************************************
-     * Service Worker & PWA
+     * Service Worker & PWA & SHARE TARGET
+     * Added share_target logic to receive JSON files from other apps
      ****************************************************************/
     (function createManifestAndServiceWorker() {
       const imgIcon = "https://github.com/ashardiyan/test/blob/main/Al%20Rahman%20Electronics-02.png?raw=true";
@@ -804,7 +805,21 @@
         icons: [
           { src: imgIcon, sizes: "192x192", type: "image/png" },
           { src: imgIcon, sizes: "512x512", type: "image/png" }
-        ]
+        ],
+        // --- ADDED SHARE TARGET ---
+        share_target: {
+          action: "./index.html",
+          method: "POST",
+          enctype: "multipart/form-data",
+          params: {
+            files: [
+              {
+                name: "backupFile",
+                accept: ["application/json", ".json", "text/json"]
+              }
+            ]
+          }
+        }
       };
       const manifestBlob = new Blob([JSON.stringify(manifestObj)], { type: 'application/json' });
       const manifestURL = URL.createObjectURL(manifestBlob);
@@ -837,6 +852,23 @@
           event.waitUntil(self.clients.claim());
         });
         self.addEventListener('fetch', function(event) {
+          // --- SHARE TARGET INTERCEPTOR ---
+          if (event.request.method === 'POST' && event.request.url.endsWith('index.html')) {
+             event.respondWith((async () => {
+               const formData = await event.request.formData();
+               const file = formData.get('backupFile');
+               if (file) {
+                 // Store file in a temporary cache so main page can read it on load
+                 const cache = await caches.open('share-target-cache');
+                 await cache.put('shared-file', new Response(file));
+                 // Redirect to page with special flag
+                 return Response.redirect('./index.html?share_processing=true', 303);
+               }
+               return Response.redirect('./index.html', 303);
+             })());
+             return;
+          }
+
           if (event.request.method !== 'GET') return;
           event.respondWith(
             caches.match(event.request, {ignoreSearch:true}).then(function(response) {
@@ -1042,11 +1074,22 @@
     }
     function getHasPIN() { return !!window.localStorage.getItem('dealer-hash'); }
     
+    // Global var to hold pending shared data until unlock
+    window.pendingShareData = null;
+
     function showDealerApp() {
       document.getElementById('dealerApp').style.display = '';
       document.getElementById('login-modal').style.display = 'none';
       setTimeout(refreshProductList, 220);
       if (typeof window.__enablePwaBackHandler === 'function') window.__enablePwaBackHandler();
+
+      // Check for pending share data
+      if (window.pendingShareData) {
+          setTimeout(() => {
+             processImportText(window.pendingShareData);
+             window.pendingShareData = null;
+          }, 500);
+      }
     }
     
     function showLoginModal(msg) {
@@ -1062,25 +1105,36 @@
       }
       document.getElementById('loginPIN').value = '';
       
-      // FIXED: Only focus PIN (showing keyboard) if fingerprint is NOT setup
       if (!hasBiometricSetup()) {
           setTimeout(()=>document.getElementById('loginPIN').focus(),120);
       }
       
-      // Check if we should show fingerprint button
       checkBiometricButtonVisibility();
     }
     
     let justSetPIN = false;
 
-    window.addEventListener('load', ()=> {
+    window.addEventListener('load', async () => {
+      // 1. Check if we have a shared file from Service Worker cache
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.has('share_processing')) {
+         try {
+             const cache = await caches.open('share-target-cache');
+             const response = await cache.match('shared-file');
+             if (response) {
+                 const text = await response.text();
+                 window.pendingShareData = text; // Store for after unlock
+                 await cache.delete('shared-file');
+                 // clean URL
+                 window.history.replaceState({}, document.title, window.location.pathname);
+             }
+         } catch(e) { console.error("Share error", e); }
+      }
+
       updatePINUI(getHasPIN());
       if (!checkQuickAutoUnlock()) {
         showLoginModal();
-        
-        // FIXED: Automatically trigger fingerprint scan on load
         if (hasBiometricSetup()) {
-             // Slight delay to ensure modal is rendered
              setTimeout(authenticateBiometric, 400); 
         }
       }
@@ -1734,6 +1788,25 @@
       if (fileInput) fileInput.click();
     };
 
+    // Shared function to process JSON text import
+    function processImportText(text) {
+        try {
+            let arr = JSON.parse(text);
+            if (!Array.isArray(arr)) throw new Error('Invalid file - data not array');
+            arr = arr.filter(prod => prod && typeof prod === 'object' && 'name' in prod && 'qty' in prod);
+            if (!arr.length) throw new Error('No valid products in file!');
+            if (!confirm(`Import will OVERWRITE your current products with ${arr.length} product(s).\nAre you sure?`)) return;
+            window.localStorage.setItem('dealer-products', JSON.stringify(arr));
+            products = arr;
+            refreshProductList();
+            selectedProductIds.clear();
+            updateMultiSelectControls();
+            alert('Import successful. Product list replaced.');
+        } catch (ex) {
+            alert("Failed to import products: " + (ex.message || ex));
+        }
+    }
+
     document.getElementById('hiddenImport').onchange = async function (e) {
       const fileInput = e.target;
       if (!fileInput.files || !fileInput.files.length) return;
@@ -1753,17 +1826,7 @@
             reader.readAsText(file);
           });
         }
-        let arr = JSON.parse(text);
-        if (!Array.isArray(arr)) throw new Error('Invalid file - data not array');
-        arr = arr.filter(prod => prod && typeof prod === 'object' && 'name' in prod && 'qty' in prod);
-        if (!arr.length) throw new Error('No valid products in file!');
-        if (!confirm(`Import will OVERWRITE your current products with ${arr.length} product(s).\nAre you sure?`)) return;
-        window.localStorage.setItem('dealer-products', JSON.stringify(arr));
-        products = arr;
-        refreshProductList();
-        selectedProductIds.clear();
-        updateMultiSelectControls();
-        alert('Import successful. Product list replaced.');
+        processImportText(text);
       } catch (ex) {
         alert("Failed to import products: " + (ex.message || ex));
       }
