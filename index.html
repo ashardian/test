@@ -68,10 +68,11 @@
     /* Multi-select controls */
     #multiSelectControls {
       display: none;
-      gap: 10px;
+      gap: 8px;
       margin-top: 6px;
       margin-left: 2px;
       align-items: center;
+      flex-wrap: wrap;
     }
     #multiSelectControls.active { display: flex; }
     #deleteSelectedBtn {
@@ -85,9 +86,20 @@
       cursor: pointer;
       box-shadow: 0 1px 7px #ef444433;
       transition: background .14s, box-shadow .13s;
-      margin-left: 6px;
+      margin-left: 0;
     }
-    #deleteSelectedBtn:disabled { background: #ce5353a0; cursor: not-allowed; }
+    #shareSelectedBtn {
+      background: #2b3548;
+      color: var(--accent2);
+      border: 1px solid #364052;
+      border-radius: var(--rounded-btn);
+      padding: 10px 16px;
+      font-size: 0.95em;
+      font-weight: 700;
+      cursor: pointer;
+      margin-left: 0;
+    }
+    #deleteSelectedBtn:disabled, #shareSelectedBtn:disabled { background: #333; color:#777; cursor: not-allowed; border-color:transparent;}
     #selectAllCheckbox { accent-color: var(--accent2); margin-left:4px; margin-right:0; transform: scale(1.1); }
 
     .product-list { margin:0; padding:0; list-style:none; }
@@ -360,7 +372,6 @@
         color: white;
         background: rgba(255,255,255,0.1);
         border: none;
-        /* REDUCED SIZE HERE */
         font-size: 1.5rem;
         width: 40px;
         height: 40px;
@@ -396,6 +407,14 @@
             z-index: 9999;
             background: white !important;
             color: black !important;
+        }
+        /* Each product gets a page or section */
+        .print-product-page {
+            page-break-after: always;
+            margin-bottom: 50px;
+        }
+        .print-product-page:last-child {
+            page-break-after: auto;
         }
         .print-header {
             text-align: center;
@@ -558,12 +577,15 @@
             <input type="file" id="importFile" accept="application/json" style="display:none"/>
           </div>
           <div id="multiSelectControls">
-            <label style="display:flex;align-items:center;gap:4px;">
+            <label style="display:flex;align-items:center;gap:4px;margin-right:10px;">
               <input type="checkbox" id="selectAllCheckbox" title="Select all" />
               <span style="user-select:none;">Select all</span>
             </label>
-            <button type="button" id="deleteSelectedBtn" disabled>🗑️ Delete Selected</button>
-            <span id="selectedCountText" style="color:var(--danger);font-weight:600;font-size:0.99em;"></span>
+            <div style="display:flex;gap:6px;">
+                <button type="button" id="deleteSelectedBtn" disabled>🗑️ Delete</button>
+                <button type="button" id="shareSelectedBtn" disabled>📤 Share Selected</button>
+            </div>
+            <span id="selectedCountText" style="color:var(--danger);font-weight:600;font-size:0.99em;margin-left:5px;"></span>
           </div>
           <ul class="product-list" id="productList"></ul>
           <div class="no-products" id="noProducts" style="display:none">No products yet. Click <b>+ Add</b> to get started!</div>
@@ -610,7 +632,7 @@
     <div class="modal" id="shareModal">
       <button class="modal-close" type="button" id="closeShareBtn" title="Close" aria-label="Close dialog" role="button">✖</button>
       <h3>📤 Share Product PDF</h3>
-      <div style="margin-bottom:15px;color:var(--text-muted);text-align:center;">Select fields to include in the generated PDF/Print.</div>
+      <div id="shareSubtitle" style="margin-bottom:15px;color:var(--text-muted);text-align:center;">Select fields to include in the generated PDF/Print.</div>
       
       <div class="share-options">
           <label class="share-option-row">
@@ -922,7 +944,7 @@
       })();
 
       const swScript = `
-        const CACHE_NAME = 'local-dealer-cache-v6';
+        const CACHE_NAME = 'local-dealer-cache-v7';
         const OFFLINE_URL = self.registration.scope.endsWith('/') ? self.registration.scope + 'index.html' : self.registration.scope + '/index.html';
         const FILES_TO_CACHE = [ OFFLINE_URL, './index.html' ];
         self.addEventListener('install', function(event) { event.waitUntil(caches.open(CACHE_NAME).then(function(cache) { return cache.addAll(FILES_TO_CACHE); })); self.skipWaiting(); });
@@ -1183,12 +1205,27 @@
     function escapeHTML(v) { if (typeof v !== "string") return v === undefined || v === null ? "" : String(v); return v.replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'" :'&#39;','"':'&quot;'}[c])); }
 
     function handleCheckboxChange(productId, checked) { if (checked) selectedProductIds.add(productId); else selectedProductIds.delete(productId); updateMultiSelectControls(); }
+    
+    // Updated updateMultiSelectControls to handle share button
     function updateMultiSelectControls() {
       const multiSelectControls = document.getElementById('multiSelectControls');
       const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+      const shareSelectedBtn = document.getElementById('shareSelectedBtn');
       const selectedCountText = document.getElementById('selectedCountText');
       const selectAllCheckbox = document.getElementById('selectAllCheckbox');
-      if (selectedProductIds.size > 0) { multiSelectControls.classList.add('active'); deleteSelectedBtn.disabled = false; selectedCountText.textContent = `${selectedProductIds.size} selected`; } else { multiSelectControls.classList.remove('active'); deleteSelectedBtn.disabled = true; selectedCountText.textContent = ""; }
+      
+      if (selectedProductIds.size > 0) { 
+          multiSelectControls.classList.add('active'); 
+          deleteSelectedBtn.disabled = false; 
+          shareSelectedBtn.disabled = false;
+          selectedCountText.textContent = `${selectedProductIds.size} selected`; 
+      } else { 
+          multiSelectControls.classList.remove('active'); 
+          deleteSelectedBtn.disabled = true; 
+          shareSelectedBtn.disabled = true;
+          selectedCountText.textContent = ""; 
+      }
+      
       if (products.length && selectedProductIds.size === products.length) { selectAllCheckbox.checked = true; selectAllCheckbox.indeterminate = false; } else if (selectedProductIds.size > 0) { selectAllCheckbox.checked = false; selectAllCheckbox.indeterminate = true; } else { selectAllCheckbox.checked = false; selectAllCheckbox.indeterminate = false; }
     }
     
@@ -1262,6 +1299,15 @@
 
     document.getElementById("selectAllCheckbox").addEventListener("change", function() { if (this.checked) { products.forEach(prod => selectedProductIds.add(prod.id)); } else { selectedProductIds.clear(); } refreshProductList(); updateMultiSelectControls(); });
     document.getElementById("deleteSelectedBtn").onclick = function() { if (selectedProductIds.size === 0) return; if (!confirm(`Are you sure you want to delete ${selectedProductIds.size} selected item(s)?`)) return; products = products.filter(p => !selectedProductIds.has(p.id)); selectedProductIds.clear(); saveProducts(); updateMultiSelectControls(); };
+
+    // BULK SHARE BUTTON HANDLER
+    document.getElementById("shareSelectedBtn").onclick = function() {
+        if (selectedProductIds.size === 0) return;
+        const itemsToShare = products.filter(p => selectedProductIds.has(p.id));
+        if(itemsToShare.length > 0) {
+            openShareModal(null, itemsToShare);
+        }
+    };
 
     const detailModalBackdrop = document.getElementById('detailModalBackdrop');
     const detailModalBody = document.getElementById('detailModalBody');
@@ -1509,6 +1555,7 @@
     const shareModalBackdrop = document.getElementById('shareModalBackdrop');
     const closeShareBtn = document.getElementById('closeShareBtn');
     const generatePdfBtn = document.getElementById('generatePdfBtn');
+    const shareSubtitle = document.getElementById('shareSubtitle');
     
     // Checkboxes
     const chkPhoto = document.getElementById('sharePhoto');
@@ -1518,10 +1565,18 @@
     const chkCategory = document.getElementById('shareCategory');
     const chkNotes = document.getElementById('shareNotes');
     
-    let productToShare = null;
+    // Updated: Now accepts array of products
+    let productsToShareQueue = [];
     
-    function openShareModal(product) {
-        productToShare = product;
+    function openShareModal(product, list = null) {
+        if(list) {
+            productsToShareQueue = list;
+            shareSubtitle.textContent = `Generate PDF for ${list.length} selected product(s).`;
+        } else {
+            productsToShareQueue = [product];
+            shareSubtitle.textContent = "Select fields to include in the generated PDF/Print.";
+        }
+
         // Set defaults
         chkPhoto.checked = true;
         chkMrp.checked = true;
@@ -1533,70 +1588,77 @@
         shareModalBackdrop.classList.remove('hide');
     }
     
-    closeShareBtn.onclick = () => shareModalBackdrop.classList.add('hide');
+    closeShareBtn.onclick = () => { shareModalBackdrop.classList.add('hide'); productsToShareQueue = []; };
     
     generatePdfBtn.onclick = function() {
-        if(!productToShare) return;
+        if(productsToShareQueue.length === 0) return;
         
         const printableArea = document.getElementById('printableArea');
-        
-        // Build the HTML for the printed page
-        let html = `
-            <div class="print-header">
-                <img src="https://github.com/ashardiyan/test/blob/main/Al%20Rahman%20Electronics-02.png?raw=true" class="print-logo" />
-                <div class="print-title">Al Rahman Electronics</div>
-                <div style="font-size:14px;color:#555">Product Specification Sheet</div>
-                <div style="font-size:12px;color:#777">Generated: ${new Date().toLocaleDateString()}</div>
-            </div>
-            
-            <h1 style="text-align:center;margin-top:20px;">${escapeHTML(productToShare.name)}</h1>
-        `;
-        
-        if(chkPhoto.checked && productToShare.photo) {
-            html += `<img src="${productToShare.photo}" class="print-product-img" />`;
-        }
-        
-        html += `<table class="print-details-table"><tbody>`;
-        
-        if(chkCategory.checked && productToShare.category) {
-            html += `<tr><td class="print-label">Category</td><td>${escapeHTML(productToShare.category)}</td></tr>`;
-        }
-        
-        if(chkQty.checked) {
-            html += `<tr><td class="print-label">In Stock</td><td>${productToShare.qty}</td></tr>`;
-        }
-        
-        if(chkMrp.checked) {
-            html += `<tr><td class="print-label">Price (MRP)</td><td>₨ ${Number(productToShare.mrp).toLocaleString()}</td></tr>`;
-        }
-        
-        if(chkCost.checked && productToShare.cost !== null && productToShare.cost !== undefined) {
-             html += `<tr><td class="print-label">Cost Price</td><td>₨ ${Number(productToShare.cost).toLocaleString()}</td></tr>`;
-        }
-        
-        html += `</tbody></table>`;
-        
-        if(chkNotes.checked && productToShare.notes) {
-            html += `
-                <div class="print-notes-box">
-                    <strong>Notes:</strong><br/>
-                    ${escapeHTML(productToShare.notes)}
-                </div>
+        let fullHtml = '';
+
+        // Generate HTML for ALL selected products
+        productsToShareQueue.forEach(prod => {
+            let html = `
+                <div class="print-product-page">
+                    <div class="print-header">
+                        <img src="https://github.com/ashardiyan/test/blob/main/Al%20Rahman%20Electronics-02.png?raw=true" class="print-logo" />
+                        <div class="print-title">Al Rahman Electronics</div>
+                        <div style="font-size:14px;color:#555">Product Specification Sheet</div>
+                        <div style="font-size:12px;color:#777">Generated: ${new Date().toLocaleDateString()}</div>
+                    </div>
+                    
+                    <h1 style="text-align:center;margin-top:20px;">${escapeHTML(prod.name)}</h1>
             `;
-        }
-        
-        html += `
-            <div style="text-align:center; margin-top:50px; font-size:12px; color:#888;">
-                Thank you for your business!
-            </div>
-        `;
-        
-        printableArea.innerHTML = html;
+            
+            if(chkPhoto.checked && prod.photo) {
+                html += `<img src="${prod.photo}" class="print-product-img" />`;
+            }
+            
+            html += `<table class="print-details-table"><tbody>`;
+            
+            if(chkCategory.checked && prod.category) {
+                html += `<tr><td class="print-label">Category</td><td>${escapeHTML(prod.category)}</td></tr>`;
+            }
+            
+            if(chkQty.checked) {
+                html += `<tr><td class="print-label">In Stock</td><td>${prod.qty}</td></tr>`;
+            }
+            
+            if(chkMrp.checked) {
+                html += `<tr><td class="print-label">Price (MRP)</td><td>₨ ${Number(prod.mrp).toLocaleString()}</td></tr>`;
+            }
+            
+            if(chkCost.checked && prod.cost !== null && prod.cost !== undefined) {
+                 html += `<tr><td class="print-label">Cost Price</td><td>₨ ${Number(prod.cost).toLocaleString()}</td></tr>`;
+            }
+            
+            html += `</tbody></table>`;
+            
+            if(chkNotes.checked && prod.notes) {
+                html += `
+                    <div class="print-notes-box">
+                        <strong>Notes:</strong><br/>
+                        ${escapeHTML(prod.notes)}
+                    </div>
+                `;
+            }
+            
+            html += `
+                    <div style="text-align:center; margin-top:50px; font-size:12px; color:#888;">
+                        Thank you for your business!
+                    </div>
+                </div> `;
+            fullHtml += html;
+        });
+
+        printableArea.innerHTML = fullHtml;
         
         // Close modal and Print
         shareModalBackdrop.classList.add('hide');
         setTimeout(() => {
             window.print();
+            // Clear queue after printing
+            productsToShareQueue = [];
         }, 300);
     };
 
