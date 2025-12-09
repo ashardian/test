@@ -360,9 +360,10 @@
         color: white;
         background: rgba(255,255,255,0.1);
         border: none;
-        font-size: 2rem;
-        width: 50px;
-        height: 50px;
+        /* REDUCED SIZE HERE */
+        font-size: 1.5rem;
+        width: 40px;
+        height: 40px;
         border-radius: 50%;
         display: flex;
         align-items: center;
@@ -921,7 +922,7 @@
       })();
 
       const swScript = `
-        const CACHE_NAME = 'local-dealer-cache-v5';
+        const CACHE_NAME = 'local-dealer-cache-v6';
         const OFFLINE_URL = self.registration.scope.endsWith('/') ? self.registration.scope + 'index.html' : self.registration.scope + '/index.html';
         const FILES_TO_CACHE = [ OFFLINE_URL, './index.html' ];
         self.addEventListener('install', function(event) { event.waitUntil(caches.open(CACHE_NAME).then(function(cache) { return cache.addAll(FILES_TO_CACHE); })); self.skipWaiting(); });
@@ -988,18 +989,42 @@
     });
 
     (function handleAndroidBackButton() {
-      function isStandalone() { return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || (window.navigator.standalone === true); }
+      // Updated: Now permissive so back button works in Browser too, not just Standalone
       let openedModals = [];
-      const modalPriority = ['productModalBackdrop', 'deleteModalBackdrop', 'settingsBackdrop', 'detailModalBackdrop', 'shareModalBackdrop'];
+      // Added imageViewerOverlay to priority list
+      const modalPriority = ['imageViewerOverlay', 'productModalBackdrop', 'deleteModalBackdrop', 'settingsBackdrop', 'detailModalBackdrop', 'shareModalBackdrop'];
 
-      function pushMainStateToHistory() { if (!isStandalone()) return; try { history.replaceState({dealerAppMain: true}, document.title, window.location.href); } catch (e) {} }
-      function pushModalState(modalId) { if (!isStandalone()) return; try { history.pushState({modal: modalId}, document.title, window.location.href); openedModals.push(modalId); } catch (e) {} }
+      function pushMainStateToHistory() { try { history.replaceState({dealerAppMain: true}, document.title, window.location.href); } catch (e) {} }
+      function pushModalState(modalId) { try { history.pushState({modal: modalId}, document.title, window.location.href); openedModals.push(modalId); } catch (e) {} }
+      
       function enablePwaBackHandler() {
         pushMainStateToHistory();
         window.addEventListener('popstate', function(e) {
           if (document.getElementById('dealerApp').style.display !== 'none') {
-            const topOpenModal = (() => { for (let i = 0; i < modalPriority.length; ++i) { const el = document.getElementById(modalPriority[i]); if (el && !el.classList.contains('hide')) return modalPriority[i]; } return null; })();
-            if (topOpenModal) { document.getElementById(topOpenModal).classList.add('hide'); setTimeout(()=>{},10); return; }
+            const topOpenModal = (() => { 
+                for (let i = 0; i < modalPriority.length; ++i) { 
+                    const el = document.getElementById(modalPriority[i]); 
+                    if (!el) continue;
+                    // Check if open (image viewer uses 'show', others use absence of 'hide')
+                    if (modalPriority[i] === 'imageViewerOverlay') {
+                         if (el.classList.contains('show')) return modalPriority[i];
+                    } else {
+                         if (!el.classList.contains('hide')) return modalPriority[i];
+                    }
+                } 
+                return null; 
+            })();
+            
+            if (topOpenModal) { 
+                if (topOpenModal === 'imageViewerOverlay') {
+                    document.getElementById(topOpenModal).classList.remove('show');
+                    document.getElementById('imageViewerImg').src = '';
+                } else {
+                    document.getElementById(topOpenModal).classList.add('hide'); 
+                }
+                setTimeout(()=>{},10); 
+                return; 
+            }
             pushMainStateToHistory();
           }
         });
@@ -1009,7 +1034,12 @@
           const el = document.getElementById(id);
           if (!el) return;
           const observer = new MutationObserver(() => {
-            if (!el.classList.contains('hide')) { if (!openedModals.includes(id)) pushModalState(id); } else { const idx = openedModals.indexOf(id); if (idx !== -1) openedModals.splice(idx, 1); }
+            let isOpen = false;
+            if (id === 'imageViewerOverlay') isOpen = el.classList.contains('show');
+            else isOpen = !el.classList.contains('hide');
+            
+            if (isOpen) { if (!openedModals.includes(id)) pushModalState(id); } 
+            else { const idx = openedModals.indexOf(id); if (idx !== -1) openedModals.splice(idx, 1); }
           });
           observer.observe(el, { attributes: true, attributeFilter: ['class'] });
         });
